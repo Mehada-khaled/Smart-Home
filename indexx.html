@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Project</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f2f2f2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        h2 {
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        #sensorReadings, #actuatorControl, #projectAnalytics {
+            background-color: #fff;
+            padding: 20px;
+            margin: 20px auto;
+            width: 80%;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #sensorReadings p, #actuatorControl button, #projectAnalytics p {
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #sensorReadings, #actuatorControl {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <h1>IoT Project</h1>
+    
+    <h2>Sensor Readings</h2>
+    <div id="sensorReadings">
+        <div>
+            <p>DHT Sensor Reading: <span id="temperature">#temp#°C</span></p>
+            <p>Gas Sensor Reading: <span id="gas">#gas# ppm</span></p>
+        </div>
+        <div>
+            <p>Humidity Reading: <span id="humidity">#photoresistor#</span></p>
+        </div>
+    </div>
+
+    <h2>Actuator Control</h2>
+    <div id="actuatorControl">
+        <div>
+           <a href="http://192.168.137.106/actuators/fan/on"> <button id="fanOnButton">Turn Fan On</button></a>
+           <a href="http://192.168.137.106/actuators/fan/off"> <button id="fanOffButton">Turn Fan Off</button></a>
+        </div>
+        <div>
+            <a href="http://192.168.137.106/actuators/buzzer/on"> <button id="buzzerOnButton">Turn Buzzer On</button> </a>
+            <a href="http://192.168.137.106/actuators/buzzer/off"> <button id="buzzerOffButton">Turn Buzzer Off</button> </a>
+        </div>
+        <div>
+            <a href="http://192.168.137.106/actuators/led/on"> <button id="ledOnButton">Turn LED On</button> </a>
+            <a href="http://192.168.137.106/actuators/led/off"> <button id="ledOffButton">Turn LED Off</button> </a>
+        </div>
+    </div>
+
+    <h2>Project Analytics</h2>
+    <div id="projectAnalytics">
+        <p>Total Fan Usage: <span id="fanUsage">2 hours</span></p>
+        <p>Total Buzzer Alerts: <span id="buzzerAlerts">5</span></p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.2.7/mqtt.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.2/firebase-database-compat.js"></script>
+
+    <script>
+        const brokerUrl = 'ws://192.168.137.1:8083/mqtt'; // Change to your broker URL
+        const client = mqtt.connect(brokerUrl);
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBiHdqqlotLkYhuYARVu5MCawfglQZsVAs",
+            authDomain: "iot-lab-2f2ee.firebaseapp.com",
+            databaseURL: "https://iot-lab-2f2ee-default-rtdb.firebaseio.com",
+            projectId: "iot-lab-2f2ee",
+            storageBucket: "iot-lab-2f2ee.appspot.com",
+            messagingSenderId: "6411375661",
+            appId: "1:6411375661:web:e271f02d8d67202f3614a4",
+            measurementId: "G-BFQYEMXZ5B"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        function firebaseDataUpdating(topic, message) {
+            const actuatorRef = database.ref('actuators');
+
+            switch (topic) {
+                case 'home/fan':
+                    actuatorRef.child('fan').set({ state: message });
+                    break;
+                case 'home/buzzer':
+                    actuatorRef.child('buzzer').set({ state: message });
+                    break;
+                case 'home/led':
+                    actuatorRef.child('led').set({ state: message });
+                    break;
+                default:
+                    console.error('Invalid topic:', topic);
+                    break;
+            }
+
+            console.log('Firebase updated:', topic, message);
+        }
+
+        client.on('connect', function () {
+            console.log('Connected to MQTT broker');
+            client.subscribe('home/sensors', function (err) {
+                if (!err) {
+                    console.log('Subscribed to home/sensors');
+                }
+            });
+        });
+
+        client.on('message', function (topic, message) {
+            console.log(topic + ": " + message.toString());
+            try {
+                const data = JSON.parse(message);
+                document.getElementById('temperature').innerText = data.temp;
+                document.getElementById('gas').innerText = data.gas;
+                document.getElementById('humidity').innerText = data.humidity;
+            } catch (e) {
+                console.error("Invalid JSON format", e);
+            }
+        });
+
+        function publishAndFirebaseUpdate(topic, message) {
+            // Log the topic and message before publishing
+            console.log('Publishing to topic: ', topic);
+            console.log('Message: ', message);
+
+            client.publish(topic, message);
+            firebaseDataUpdating(topic, message);
+        }
+
+        function sendCommand(message) {
+            var topic = 'home/control';
+            // Log the topic and message before sending command
+            console.log('Sending command to topic: ', topic);
+            console.log('Command: ', message);
+
+            client.publish(topic, message);
+        }
+
+        // Corrected event listeners for buttons
+        document.getElementById('fanOnButton').addEventListener('click', function() {
+            sendCommand(JSON.stringify({ fan: 'on' }));
+            publishAndFirebaseUpdate('home/fan', 'on');
+        });
+
+        document.getElementById('fanOffButton').addEventListener('click', function() {
+            sendCommand(JSON.stringify({ fan: 'off' }));
+            publishAndFirebaseUpdate('home/fan', 'off');
+        });
+
+        document.getElementById('buzzerOnButton').addEventListener('click', function() {
+            sendCommand(JSON.stringify({ buzzer: 'on' }));
+            publishAndFirebaseUpdate('home/buzzer', 'on');
+        });
+
+        document.getElementById('buzzerOffButton').addEventListener('click', function() {
+            sendCommand(JSON.stringify({ buzzer: 'off' }));
+            publishAndFirebaseUpdate('home/buzzer', 'off');
+        });
+
+        document.getElementById('ledOnButton').addEventListener('click', function() {
+            sendCommand(JSON.stringify({ led: 'on' }));
+            publishAndFirebaseUpdate('home/led', 'on');
+        });
+
+        document.getElementById('ledOffButton').addEventListener('click', function() {
+            sendCommand(JSON.stringify({ led: 'off' }));
+            publishAndFirebaseUpdate('home/led', 'off');
+        });
+    </script>
+</body>
+</html>
